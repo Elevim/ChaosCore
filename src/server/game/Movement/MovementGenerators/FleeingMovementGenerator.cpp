@@ -138,7 +138,7 @@ FleeingMovementGenerator<T>::Initialize(T &owner)
     owner.CastStop();
     owner.AddUnitState(UNIT_STAT_FLEEING | UNIT_STAT_ROAMING);
     owner.SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_FLEEING);
-    owner.SetUInt64Value(UNIT_FIELD_TARGET, 0);
+    owner.SetTarget(0);
     owner.RemoveUnitMovementFlag(MOVEMENTFLAG_WALKING);
 
     _setTargetLocation(owner);
@@ -152,7 +152,7 @@ FleeingMovementGenerator<T>::Finalize(T &owner)
     owner.ClearUnitState(UNIT_STAT_FLEEING | UNIT_STAT_ROAMING);
     owner.StopMoving();
     if (owner.GetTypeId() == TYPEID_UNIT && owner.getVictim())
-        owner.SetUInt64Value(UNIT_FIELD_TARGET, owner.getVictim()->GetGUID());
+        owner.SetTarget(owner.getVictim()->GetGUID());
 }
 
 template<class T>

@@ -22,6 +22,8 @@ enum
     TYPE_EVENT_NPC              = 102,
     TYPE_NORTHREND_BEASTS       = 103,
 
+	DATA_HEALTH_TWIN_SHARED     = 201,
+
     DATA_SNOBOLD_COUNT                   = 301,
     DATA_MISTRESS_OF_PAIN_COUNT          = 302,
     DATA_TRIBUTE_TO_IMMORTALITY_ELEGIBLE = 303,
@@ -269,6 +271,12 @@ enum eAchievementData
 
     // Timed events
     EVENT_START_TWINS_FIGHT                 = 21853
+};
+
+enum eDestructibleBuildingsFaction
+{
+    GO_ALLIANCE_FACTION = 1732,
+    GO_HORDE_FACTION    = 1735,
 };
 
 #endif

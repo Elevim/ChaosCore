@@ -169,9 +169,6 @@ public:
             m_PlayerDeathCount = 0;
             m_HeiganPlayerDeathCount = 0;
             Step = 0;
-		 instance->LoadGrid(139.702469f, -12.263711f);
-
-            Initialize();
         }
 
         std::set<uint64> HeiganEruptionGUID[4];
@@ -324,19 +321,15 @@ public:
                 case GO_KELTHUZAD_TRIGGER: uiKelthuzadTrigger = pGo->GetGUID(); break;
                case GO_ARAC_PORTAL:
                     AracPortalGUID = pGo->GetGUID();
-                    pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_UNK1);
                     break;
                case GO_PLAG_PORTAL:
                     PlagPortalGUID = pGo->GetGUID();
-                    pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_UNK1);
                     break;
                 case GO_MILI_PORTAL:
                     MiliPortalGUID = pGo->GetGUID();
-                    pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_UNK1);
                     break;
                 case GO_CONS_PORTAL:
                     ConsPortalGUID = pGo->GetGUID();
-                    pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_UNK1);
                     break;
                 case GO_ROOM_ANUBREKHAN:
                     uiNaxxDoors[DOOR_ROOM_ANUBREKHAN] = pGo->GetGUID();

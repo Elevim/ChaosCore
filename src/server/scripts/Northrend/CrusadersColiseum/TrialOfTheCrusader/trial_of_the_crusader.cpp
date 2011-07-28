@@ -168,6 +168,9 @@ class npc_announcer_toc10 : public CreatureScript
                     }
                     break;
                 case GOSSIP_ACTION_INFO_DEF+2:
+                    if (Creature* icehowl = Unit::GetCreature(*player, instanceScript->GetData64(NPC_ICEHOWL)))
+                        icehowl->DespawnOrUnsummon();
+                                           
                     if (Creature* jaraxxus = Unit::GetCreature(*player, instanceScript->GetData64(NPC_JARAXXUS)))
                     {
                         jaraxxus->RemoveAurasDueToSpell(SPELL_JARAXXUS_CHAINS);
@@ -204,7 +207,7 @@ class npc_announcer_toc10 : public CreatureScript
                         return true;
 
                     if (GameObject* floor = GameObject::GetGameObject(*player, instanceScript->GetData64(GO_ARGENT_COLISEUM_FLOOR)))
-                        floor->TakenDamage(1000000);
+                        floor->SetDestructibleState(GO_DESTRUCTIBLE_DESTROYED);
 
                     creature->CastSpell(creature, 69016, false);
 
@@ -319,7 +322,7 @@ class boss_lich_king_toc : public CreatureScript
                             break;
                         case 5080:
                             if (GameObject* pGoFloor = m_pInstance->instance->GetGameObject(m_pInstance->GetData64(GO_ARGENT_COLISEUM_FLOOR)))
-                                pGoFloor->TakenDamage(1000000);
+                                pGoFloor->SetDestructibleState(GO_DESTRUCTIBLE_DESTROYED);
                             me->CastSpell(me, 69016, false);
                             if (m_pInstance)
                             {
@@ -474,7 +477,7 @@ class npc_fizzlebang_toc : public CreatureScript
                             break;
                         case 1142:
                             if (Creature* pTemp = Unit::GetCreature(*me, m_pInstance->GetData64(NPC_JARAXXUS)))
-                                pTemp->SetUInt64Value(UNIT_FIELD_TARGET, me->GetGUID());
+                                pTemp->SetTarget(me->GetGUID());
                             if (Creature* pTrigger = Unit::GetCreature(*me, m_uiTriggerGUID))
                                 pTrigger->DespawnOrUnsummon();
                             if (Creature* pPortal = Unit::GetCreature(*me, m_uiPortalGUID))

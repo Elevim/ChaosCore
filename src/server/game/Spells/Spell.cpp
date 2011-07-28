@@ -528,27 +528,11 @@ m_caster(Caster), m_spellValue(new SpellValue(m_spellInfo))
 
     m_channelTargetEffectMask = 0;
 
-    // determine reflection
-    m_canReflect = false;
-
-    if (m_spellInfo->DmgClass == SPELL_DAMAGE_CLASS_MAGIC && !IsAreaOfEffectSpell(m_spellInfo) && !(m_spellInfo->AttributesEx2 & SPELL_ATTR2_CANT_REFLECTED))
-    {
-        for (int j = 0; j < MAX_SPELL_EFFECTS; ++j)
-        {
-            if (m_spellInfo->Effect[j] == 0)
-                continue;
-
-            if (!IsPositiveTarget(m_spellInfo->EffectImplicitTargetA[j], m_spellInfo->EffectImplicitTargetB[j]))
-                m_canReflect = true;
-            else
-                m_canReflect = (m_spellInfo->AttributesEx & SPELL_ATTR1_NEGATIVE) ? true : false;
-
-            if (m_canReflect)
-                continue;
-            else
-                break;
-        }
-    }
+    // Determine if spell can be reflected back to the caster
+    // Patch 1.2 notes: Spell Reflection no longer reflects abilities
+    m_canReflect = m_spellInfo->DmgClass == SPELL_DAMAGE_CLASS_MAGIC && !(m_spellInfo->Attributes & SPELL_ATTR0_ABILITY)
+        && !(m_spellInfo->AttributesEx & SPELL_ATTR1_CANT_BE_REFLECTED) && !(m_spellInfo->Attributes & SPELL_ATTR0_UNAFFECTED_BY_INVULNERABILITY)
+        && !IsPassiveSpell(m_spellInfo) && !IsPositiveSpell(m_spellInfo->Id);
 
     CleanupTargetList();
     CleanupEffectExecuteData();
@@ -907,8 +891,8 @@ void Spell::prepareDataForTriggerSystem(AuraEffect const* /*triggeredByAura*/)
     if (!(m_procAttacker & PROC_FLAG_DONE_RANGED_AUTO_ATTACK))
     {
         if (m_IsTriggeredSpell &&
-            (m_spellInfo->AttributesEx2 & SPELL_ATTR2_TRIGGERED_CAN_TRIGGER ||
-            m_spellInfo->AttributesEx3 & SPELL_ATTR3_TRIGGERED_CAN_TRIGGER_2))
+            (m_spellInfo->AttributesEx2 & SPELL_ATTR2_TRIGGERED_CAN_TRIGGER_PROC ||
+            m_spellInfo->AttributesEx3 & SPELL_ATTR3_TRIGGERED_CAN_TRIGGER_PROC_2))
             m_procEx |= PROC_EX_INTERNAL_CANT_PROC;
         else if (m_IsTriggeredSpell)
             m_procEx |= PROC_EX_INTERNAL_TRIGGERED;
@@ -1030,20 +1014,34 @@ void Spell::AddUnitTarget(uint64 unitGUID, uint32 effIndex)
         AddUnitTarget(unit, effIndex);
 }
 
-void Spell::AddGOTarget(GameObject* pVictim, uint32 effIndex)
+void Spell::AddGOTarget(GameObject* go, uint32 effIndex)
 {
     if (m_spellInfo->Effect[effIndex] == 0)
         return;
 
-    uint64 targetGUID = pVictim->GetGUID();
+    switch (m_spellInfo->Effect[effIndex])
+    {
+        case SPELL_EFFECT_GAMEOBJECT_DAMAGE:
+        case SPELL_EFFECT_GAMEOBJECT_REPAIR:
+        case SPELL_EFFECT_GAMEOBJECT_SET_DESTRUCTION_STATE:
+            if (go->GetGoType() != GAMEOBJECT_TYPE_DESTRUCTIBLE_BUILDING)
+                return;
+            break;
+        default:
+            break;
+    }
+
+    uint64 targetGUID = go->GetGUID();
 
     // Lookup target in already in list
     for (std::list<GOTargetInfo>::iterator ihit = m_UniqueGOTargetInfo.begin(); ihit != m_UniqueGOTargetInfo.end(); ++ihit)
+    {
         if (targetGUID == ihit->targetGUID)                 // Found in list
         {
             ihit->effectMask |= 1 << effIndex;              // Add only effect mask
             return;
         }
+    }
 
     // This is new target calculate data for him
 
@@ -1056,10 +1054,11 @@ void Spell::AddGOTarget(GameObject* pVictim, uint32 effIndex)
     if (m_spellInfo->speed > 0.0f)
     {
         // calculate spell incoming interval
-        float dist = m_caster->GetDistance(pVictim->GetPositionX(), pVictim->GetPositionY(), pVictim->GetPositionZ());
-        if (dist < 5.0f) dist = 5.0f;
-        target.timeDelay = (uint64) floor(dist / m_spellInfo->speed * 1000.0f);
-        if (m_delayMoment == 0 || m_delayMoment>target.timeDelay)
+        float dist = m_caster->GetDistance(go->GetPositionX(), go->GetPositionY(), go->GetPositionZ());
+        if (dist < 5.0f)
+            dist = 5.0f;
+        target.timeDelay = uint64(floor(dist / m_spellInfo->speed * 1000.0f));
+        if (m_delayMoment == 0 || m_delayMoment > target.timeDelay)
             m_delayMoment = target.timeDelay;
     }
     else
@@ -1071,8 +1070,7 @@ void Spell::AddGOTarget(GameObject* pVictim, uint32 effIndex)
 
 void Spell::AddGOTarget(uint64 goGUID, uint32 effIndex)
 {
-    GameObject* go = m_caster->GetMap()->GetGameObject(goGUID);
-    if (go)
+    if (GameObject* go = m_caster->GetMap()->GetGameObject(goGUID))
         AddGOTarget(go, effIndex);
 }
 
@@ -1164,7 +1162,7 @@ void Spell::DoAllEffectOnTarget(TargetInfo *target)
 
                             //Spells with this flag cannot trigger if effect is casted on self
                             // Slice and Dice, relentless strikes, eviscerate
-    bool canEffectTrigger = unitTarget->CanProc() && CanExecuteTriggersOnHit(mask);
+    bool canEffectTrigger = !(m_spellInfo->AttributesEx3 & SPELL_ATTR3_CANT_TRIGGER_PROC) && unitTarget->CanProc() && CanExecuteTriggersOnHit(mask);
     Unit* spellHitTarget = NULL;
 
     if (missInfo == SPELL_MISS_NONE)                          // In case spell hit target, do all effect on that target
@@ -1298,6 +1296,9 @@ void Spell::DoAllEffectOnTarget(TargetInfo *target)
         }
 
         caster->DealSpellDamage(&damageInfo, true);
+
+        // Needed by Hooks
+        m_true_damage = damageInfo.damage;
 
         // Haunt
         if (m_spellInfo->SpellFamilyName == SPELLFAMILY_WARLOCK && m_spellInfo->SpellFamilyFlags[1] & 0x40000 && m_spellAura && m_spellAura->GetEffect(1))
@@ -2978,6 +2979,12 @@ void Spell::prepare(SpellCastTargets const* targets, AuraEffect const* triggered
         m_caster->SetCurrentCastedSpell(this);
         SendSpellStart();
 
+        // set target for proper facing
+        if (m_casttime && !m_IsTriggeredSpell)
+            if (uint64 target = m_targets.GetUnitTargetGUID())
+                if (m_caster->GetGUID() != target && m_caster->GetTypeId() == TYPEID_UNIT)
+                    m_caster->FocusTarget(this, target);
+
         TriggerGlobalCooldown();
 
         //item: first cast may destroy item and second cast causes crash
@@ -3030,9 +3037,6 @@ void Spell::cancel()
     SetReferencedFromCurrent(false);
     if (m_selfContainer && *m_selfContainer == this)
         *m_selfContainer = NULL;
-
-    if (m_caster->GetTypeId() == TYPEID_PLAYER)
-        m_caster->ToPlayer()->RemoveGlobalCooldown(m_spellInfo);
 
     m_caster->RemoveDynObject(m_spellInfo->Id);
     m_caster->RemoveGameObject(m_spellInfo->Id, true);
@@ -3611,6 +3615,9 @@ void Spell::finish(bool ok)
                 && charm->GetUInt32Value(UNIT_CREATED_BY_SPELL) == m_spellInfo->Id)
                 ((Puppet*)charm)->UnSummon();
     }
+
+    if (m_caster->GetTypeId() == TYPEID_UNIT)
+        m_caster->ReleaseFocus(this);
 
     if (!ok)
         return;
@@ -4210,19 +4217,21 @@ void Spell::SendChannelStart(uint32 duration)
 
 void Spell::SendResurrectRequest(Player* target)
 {
-    // Both players and NPCs can resurrect using spells - have a look at creature 28487 for example
-    // However, the packet structure differs slightly
+    // get ressurector name for creature resurrections, otherwise packet will be not accepted
+    // for player resurrections the name is looked up by guid
+    char const* resurrectorName = m_caster->GetTypeId() == TYPEID_PLAYER ? "" : m_caster->GetNameForLocaleIdx(target->GetSession()->GetSessionDbLocaleIndex());
 
-    const char* sentName = m_caster->GetTypeId() == TYPEID_PLAYER ? "" : m_caster->GetNameForLocaleIdx(target->GetSession()->GetSessionDbLocaleIndex());
+    WorldPacket data(SMSG_RESURRECT_REQUEST, (8+4+strlen(resurrectorName)+1+1+1+4));
+    data << uint64(m_caster->GetGUID()); // resurrector guid
+    data << uint32(strlen(resurrectorName) + 1);
 
-    WorldPacket data(SMSG_RESURRECT_REQUEST, (8+4+strlen(sentName)+1+1+1));
-    data << uint64(m_caster->GetGUID());
-    data << uint32(strlen(sentName) + 1);
+    data << resurrectorName;
+    data << uint8(0); // null terminator
 
-    data << sentName;
-    data << uint8(0);
-
-    data << uint8(m_caster->GetTypeId() == TYPEID_PLAYER ? 0 : 1);
+    data << uint8(m_caster->GetTypeId() == TYPEID_PLAYER ? 0 : 1); // "you'll be afflicted with resurrection sickness"
+    // override delay sent with SMSG_CORPSE_RECLAIM_DELAY, set instant resurrection for spells with this attribute
+    if (m_spellInfo->AttributesEx3 & SPELL_ATTR3_IGNORE_RESURRECTION_TIMER)
+        data << uint32(0);
     target->GetSession()->SendPacket(&data);
 }
 
@@ -4609,8 +4618,7 @@ SpellCastResult Spell::CheckCast(bool strict)
         if (!m_IsTriggeredSpell && m_caster->ToPlayer()->HasFlag(PLAYER_FLAGS, PLAYER_ALLOW_ONLY_ABILITY))
             return SPELL_FAILED_SPELL_IN_PROGRESS;
 
-        if (m_caster->ToPlayer()->HasSpellCooldown(m_spellInfo->Id) ||
-            (strict && !m_IsTriggeredSpell && m_caster->ToPlayer()->HasGlobalCooldown(m_spellInfo)))
+        if (m_caster->ToPlayer()->HasSpellCooldown(m_spellInfo->Id))
         {
             if (m_triggeredByAuraSpell)
                 return SPELL_FAILED_DONT_REPORT;
@@ -4750,8 +4758,8 @@ SpellCastResult Spell::CheckCast(bool strict)
 
             if (m_caster->GetTypeId() == TYPEID_PLAYER)
             {
-                // Do not allow to banish target tapped by someone not in caster's group
-                if (m_spellInfo->Mechanic == MECHANIC_BANISH)
+                // Do not allow these spells to target creatures not tapped by us (Banish, Polymorph, many quest spells)
+                if (m_spellInfo->AttributesEx2 & SPELL_ATTR2_CANT_TARGET_TAPPED)
                     if (Creature *targetCreature = target->ToCreature())
                         if (targetCreature->hasLootRecipient() && !targetCreature->isTappedBy(m_caster->ToPlayer()))
                             return SPELL_FAILED_CANT_CAST_ON_TAPPED;

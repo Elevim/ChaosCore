@@ -35,6 +35,7 @@ ConfusedMovementGenerator<T>::Initialize(T &unit)
     // set initial position
     unit.GetPosition(i_x, i_y, i_z);
 
+    unit.SetTarget(0);
     unit.StopMoving();
     unit.AddUnitState(UNIT_STAT_CONFUSED);
 }
@@ -115,7 +116,7 @@ ConfusedMovementGenerator<T>::Finalize(T &unit)
     unit.ClearUnitState(UNIT_STAT_CONFUSED);
     unit.StopMoving();
     if (unit.GetTypeId() == TYPEID_UNIT && unit.getVictim())
-        unit.SetUInt64Value(UNIT_FIELD_TARGET, unit.getVictim()->GetGUID());
+        unit.SetTarget(unit.getVictim()->GetGUID());
 }
 
 template void ConfusedMovementGenerator<Player>::Initialize(Player &player);

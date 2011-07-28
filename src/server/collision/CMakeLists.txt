@@ -47,7 +47,7 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/server/shared/Dynamic/LinkedReference
   ${CMAKE_SOURCE_DIR}/src/server/shared/Logging
   ${CMAKE_SOURCE_DIR}/src/server/shared/Threading
-  ${CMAKE_SOURCE_DIR}/src/server/shared/Packets
+  ${CMAKE_SOURCE_DIR}/src/server/game/Conditions
   ${CMAKE_SOURCE_DIR}/src/server/shared/Utilities
   ${CMAKE_SOURCE_DIR}/src/server/game
   ${CMAKE_SOURCE_DIR}/src/server/game/Entities

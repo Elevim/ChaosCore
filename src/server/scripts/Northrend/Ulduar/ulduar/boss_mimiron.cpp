@@ -81,6 +81,7 @@ enum Spells
     SPELL_EMERGENCY_MODE                        = 64582,
     SPELL_FLAME_SUPPRESSANT                     = 64570,
     SPELL_FLAME_SUPPRESSANT_VX001               = 65192,
+    SPELL_SUMMON_FLAMES_INITIAL                 = 64563,
     SPELL_FLAME                                 = 64561,
     SPELL_FROST_BOMB                            = 64624,
     SPELL_FROST_BOMB_EXPLOSION_10               = 64626,
@@ -89,14 +90,14 @@ enum Spells
     SPELL_SIREN                                 = 64616,
 
     // NPCs
-    SPELL_BOMB_BOT                              = 63801  // should be 63767
+    SPELL_BOMB_BOT                              = 63801, // should be 63767
+    SPELL_NOT_SO_FRIENDLY_FIRE                  = 65040
 };
 
 enum Events
 {
     // Leviathan MK II
-    EVENT_NONE,
-    EVENT_PROXIMITY_MINE,
+    EVENT_PROXIMITY_MINE = 1,
     EVENT_NAPALM_SHELL,
     EVENT_PLASMA_BLAST,
     EVENT_SHOCK_BLAST,
@@ -136,42 +137,39 @@ enum Phases
 
 enum Actions
 {
-    DO_START_ENCOUNTER                          = 1,
-    DO_ACTIVATE_VX001                           = 2,
-    DO_START_VX001                              = 3,
-    DO_ACTIVATE_AERIAL                          = 4,
-    DO_START_AERIAL                             = 5,
-    DO_DISABLE_AERIAL                           = 6,
-    DO_ACTIVATE_V0L7R0N                         = 7,
-    DO_LEVIATHAN_ASSEMBLED                      = 8,
-    DO_VX001_ASSEMBLED                          = 9,
-    DO_AERIAL_ASSEMBLED                         = 10,
-    DO_ACTIVATE_DEATH_TIMER                     = 11,
-    DO_ENTER_ENRAGE                             = 12,
-    DO_ACTIVATE_HARD_MODE                       = 13,
-    DO_DESPAWN_SUMMONS                          = 14,
-    DATA_GET_HARD_MODE                          = 15
+    DO_START_ENCOUNTER = 1,
+    DO_ACTIVATE_VX001,
+    DO_START_VX001,
+    DO_ACTIVATE_AERIAL,
+    DO_START_AERIAL,
+    DO_DISABLE_AERIAL,
+    DO_ACTIVATE_V0L7R0N,
+    DO_LEVIATHAN_ASSEMBLED,
+    DO_VX001_ASSEMBLED,
+    DO_AERIAL_ASSEMBLED,
+    DO_ACTIVATE_DEATH_TIMER,
+    DO_ENTER_ENRAGE,
+    DO_ACTIVATE_HARD_MODE,
+    DO_DESPAWN_SUMMONS,
+    DATA_GET_HARD_MODE
 };
 
 enum Npcs
 {
-    //NPC_VX_001                                  = 33651,
-    //NPC_AERIAL_UNIT                             = 33670,
     NPC_ROCKET                                  = 34050,
     NPC_BURST_TARGET                            = 34211,
     NPC_JUNK_BOT                                = 33855,
     NPC_ASSAULT_BOT                             = 34057,
     NPC_BOOM_BOT                                = 33836,
     NPC_EMERGENCY_BOT                           = 34147,
-    NPC_FLAME                                   = 34363,
+    NPC_FLAMES_INITIAL                          = 34363,
     NPC_FLAME_SPREAD                            = 34121,
     NPC_FROST_BOMB                              = 34149,
     NPC_MKII_TURRET                             = 34071,
+    NPC_PROXIMITY_MINE                          = 34362
 };
 
 // Achievements
-#define ACHIEVEMENT_FIREFIGHTER                 RAID_MODE(3180, 3189)
-#define ACHIEVEMENT_NOT_SO_FRIENDLY_FIRE        RAID_MODE(3138, 2995)
 #define ACHIEVEMENT_SET_UP_US_THE_BOMB          RAID_MODE(2989, 3237) // TODO
 
 enum MimironChests
@@ -182,7 +180,7 @@ enum MimironChests
     CACHE_OF_INNOVATION_HARDMODE_25             = 194958
 };
 
-const Position SummonPos[9] =
+Position const SummonPos[9] =
 {
     {2703.93f, 2569.32f, 364.397f, 0},
     {2715.33f, 2569.23f, 364.397f, 0},
@@ -228,15 +226,15 @@ public:
 
         Phases phase;
 
-        void DespawnCreatures(uint32 entry, float distance, bool discs = false)
+        void DespawnCreatures(uint32 entry, float distance)
         {
-            std::list<Creature*> m_pCreatures;
-            GetCreatureListWithEntryInGrid(m_pCreatures, me, entry, distance);
+            std::list<Creature*> creatures;
+            GetCreatureListWithEntryInGrid(creatures, me, entry, distance);
 
-            if (m_pCreatures.empty())
+            if (creatures.empty())
                 return;
 
-            for(std::list<Creature*>::iterator iter = m_pCreatures.begin(); iter != m_pCreatures.end(); ++iter)
+            for (std::list<Creature*>::iterator iter = creatures.begin(); iter != creatures.end(); ++iter)
                 (*iter)->ForcedDespawn();
         }
 
@@ -254,6 +252,17 @@ public:
 
             instance->SetData(DATA_MIMIRON_ELEVATOR, GO_STATE_ACTIVE);
 
+            phase = PHASE_NULL;
+            uiStep = 0;
+            uiPhase_timer = -1;
+            uiBotTimer = 0;
+            MimironHardMode = false;
+            checkBotAlive = true;
+            Enraged = false;
+            DespawnCreatures(NPC_FLAMES_INITIAL, 100.0f);
+            DespawnCreatures(NPC_PROXIMITY_MINE, 100.0f);
+            DespawnCreatures(NPC_ROCKET, 100.0f);
+
             if (Creature* aerial = me->GetCreature(*me, instance->GetData64(DATA_AERIAL_UNIT)))
                 aerial->AI()->DoAction(DO_DESPAWN_SUMMONS);
 
@@ -264,16 +273,6 @@ public:
                         creature->ExitVehicle();
                         creature->AI()->EnterEvadeMode();
                     }
-
-            phase = PHASE_NULL;
-            uiStep = 0;
-            uiPhase_timer = -1;
-            uiBotTimer = 0;
-            MimironHardMode = false;
-            checkBotAlive = true;
-            Enraged = false;
-            DespawnCreatures(34362, 100);
-            DespawnCreatures(NPC_ROCKET, 100);
 
             if (GameObject* go = me->FindNearestGameObject(GO_BIG_RED_BUTTON, 200))
             {
@@ -292,15 +291,11 @@ public:
             if (instance)
             {
                 instance->SetBossState(TYPE_MIMIRON, DONE);
+
                 if (MimironHardMode)
-                {
-                    instance->DoCompleteAchievement(ACHIEVEMENT_FIREFIGHTER);
                     me->SummonGameObject(RAID_MODE(CACHE_OF_INNOVATION_HARDMODE_10, CACHE_OF_INNOVATION_HARDMODE_25), 2744.65f, 2569.46f, 364.314f, 3.14159f, 0, 0, 0.7f, 0.7f, 604800);
-                }
                 else
-                {
                     me->SummonGameObject(RAID_MODE(CACHE_OF_INNOVATION_10, CACHE_OF_INNOVATION_25), 2744.65f, 2569.46f, 364.314f, 3.14159f, 0, 0, 0.7f, 0.7f, 604800);
-                }
 
                 instance->DoUpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_KILL_CREATURE, NPC_LEVIATHAN_MKII, 1);
             }
@@ -314,7 +309,7 @@ public:
             _EnterCombat();
             me->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_ATTACKABLE_1);
             phase = PHASE_INTRO;
-            FlameTimer = 30000;
+            FlameTimer = 5000;
             if (MimironHardMode)
                 EnrageTimer = 8*60*1000; // Enrage in 8 min
             else
@@ -354,19 +349,20 @@ public:
                 {
                     for (uint8 i = 0; i < 3; ++i)
                         if (Unit* target = SelectTarget(SELECT_TARGET_RANDOM, 0, 100, true))
-                            if (Creature* Flame = me->SummonCreature(NPC_FLAME, target->GetPositionX() + irand(-6,6), target->GetPositionY() + irand(-6,6), target->GetPositionZ(), 0, TEMPSUMMON_MANUAL_DESPAWN))
-                                Flame->AI()->AttackStart(target);
+                            DoCast(target, SPELL_SUMMON_FLAMES_INITIAL, true);
+
                     FlameTimer = 30000;
                 }
-                else FlameTimer -= diff;
+                else
+                    FlameTimer -= diff;
 
-            // All sections need to die within 10 seconds, else they respawn
+            // All sections need to die within 15 seconds, else they respawn
             if (checkBotAlive)
                 uiBotTimer = 0;
             else
             {
                 uiBotTimer += diff;
-                if (uiBotTimer > 10000)
+                if (uiBotTimer > 15000) // spell 64383
                 {
                     if (Creature* Leviathan = me->GetCreature(*me, instance->GetData64(DATA_LEVIATHAN_MK_II)))
                         Leviathan->AI()->DoAction(DO_LEVIATHAN_ASSEMBLED);
@@ -389,8 +385,9 @@ public:
                                             Leviathan->DisappearAndDie();
                                             VX_001->DisappearAndDie();
                                             AerialUnit->DisappearAndDie();
+                                            DespawnCreatures(NPC_FLAMES_INITIAL, 100.0f);
+                                            DespawnCreatures(NPC_PROXIMITY_MINE, 100.0f);
                                             DespawnCreatures(NPC_ROCKET, 100);
-                                            //me->Kill(me, false);
                                             me->ExitVehicle();
                                             EndEncounter();
                                             checkBotAlive = true;
@@ -805,8 +802,7 @@ public:
         void EnterCombat(Unit* /*who*/)
         {
             if (Creature* Mimiron = me->GetCreature(*me, instance ? instance->GetData64(TYPE_MIMIRON) : 0))
-                if (Mimiron->AI()->GetData(DATA_GET_HARD_MODE) == 1)
-                    MimironHardMode = true;
+                MimironHardMode = Mimiron->AI()->GetData(DATA_GET_HARD_MODE);
 
             if (MimironHardMode)
             {
@@ -912,7 +908,7 @@ class boss_leviathan_mk_turret : public CreatureScript
             {
                 SetImmuneToPushPullEffects(true);
                 me->SetReactState(REACT_PASSIVE);
-                _NapalmShell = urand(4000, 8000);
+                _NapalmShell = urand(8000, 12000);
             }
 
             // try to prefer ranged targets
@@ -1096,14 +1092,13 @@ public:
         void EnterCombat(Unit* /*who*/)
         {
             if (Creature* Mimiron = me->GetCreature(*me, instance ? instance->GetData64(TYPE_MIMIRON) : 0))
-                if (Mimiron->AI()->GetData(DATA_GET_HARD_MODE) == 1)
-                    MimironHardMode = true;
+                MimironHardMode = Mimiron->AI()->GetData(DATA_GET_HARD_MODE);
 
             if (MimironHardMode)
             {
                 DoCast(me, SPELL_EMERGENCY_MODE);
                 events.ScheduleEvent(EVENT_FROST_BOMB, 15000);
-                events.ScheduleEvent(EVENT_FLAME_SUPPRESSANT_VX001, 10000);
+                events.ScheduleEvent(EVENT_FLAME_SUPPRESSANT_VX001, 1000);
             }
 
             events.ScheduleEvent(EVENT_RAPID_BURST, 2500, 0, PHASE_VX001_SOLO);
@@ -1405,8 +1400,7 @@ public:
         void EnterCombat(Unit * /*who*/)
         {
             if (Creature* Mimiron = me->GetCreature(*me, instance ? instance->GetData64(TYPE_MIMIRON) : 0))
-                if (Mimiron->AI()->GetData(DATA_GET_HARD_MODE) == 1)
-                    MimironHardMode = true;
+                MimironHardMode = Mimiron->AI()->GetData(DATA_GET_HARD_MODE);
 
             if (MimironHardMode)
                 DoCast(me, SPELL_EMERGENCY_MODE);
@@ -1554,7 +1548,7 @@ public:
                 summon->CastSpell(summon, SPELL_EMERGENCY_MODE, true);
         }
 
-        void DamageTaken(Unit * /*who*/, uint32 &damage)
+        void DamageTaken(Unit* /*who*/, uint32 &damage)
         {
             if (me->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_ATTACKABLE_1))
                 damage = 0;
@@ -1629,7 +1623,6 @@ class npc_assault_bot : public CreatureScript
         {
             npc_assault_botAI(Creature* creature) : ScriptedAI(creature)
             {
-                _instance = creature->GetInstanceScript();
             }
 
             void Reset()
@@ -1647,7 +1640,8 @@ class npc_assault_bot : public CreatureScript
                     DoCastVictim(SPELL_MAGNETIC_FIELD);
                     _fieldTimer = urand(15000, 20000);
                 }
-                else _fieldTimer -= diff;
+                else
+                    _fieldTimer -= diff;
 
                 DoMeleeAttackIfReady();
             }
@@ -1655,12 +1649,12 @@ class npc_assault_bot : public CreatureScript
             void SpellHit(Unit* /*caster*/, SpellEntry const* spell)
             {
                 // Achievement Not-So-Friendly Fire
-                if (spell->Id == 63041 && _instance)
-                    _instance->DoCompleteAchievement(ACHIEVEMENT_NOT_SO_FRIENDLY_FIRE);
+                if (spell->Id == SPELL_ROCKET_STRIKE_DMG)
+                    if (Player* player = me->SelectNearestPlayer(100.0f))
+                        player->CastSpell(player, SPELL_NOT_SO_FRIENDLY_FIRE, true);
             }
 
         private:
-            InstanceScript* _instance;
             uint32 _fieldTimer;
         };
 
@@ -1799,11 +1793,11 @@ class npc_mimiron_flame_trigger : public CreatureScript
             {
                 me->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE);
                 me->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_ATTACKABLE_1 | UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_PACIFIED);
-                DoCast(me, SPELL_FLAME, true);
-                _flameTimer = 8000;
+                me->SetInCombatWithZone();
+                _flameTimer = 3000;
             }
 
-            void SpellHit(Unit * /*caster*/, const SpellEntry* spell)
+            void SpellHit(Unit* /*caster*/, SpellEntry const* spell)
             {
                 switch (spell->Id)
                 {
@@ -1824,10 +1818,19 @@ class npc_mimiron_flame_trigger : public CreatureScript
             {
                 if (_flameTimer <= diff)
                 {
+                    DoAttackerAreaInCombat(me, 100.0f);
+
+                    if (Player* nearest = me->SelectNearestPlayer(100.0f))
+                    {
+                        me->GetMotionMaster()->Clear();
+                        me->GetMotionMaster()->MoveChase(nearest);
+                    }
+
                     me->SummonCreature(NPC_FLAME_SPREAD, me->GetPositionX(), me->GetPositionY(), me->GetPositionZ());
-                    _flameTimer = 8000;
+                    _flameTimer = 5000;
                 }
-                else _flameTimer -= diff;
+                else
+                    _flameTimer -= diff;
             }
 
         private:
@@ -1855,7 +1858,7 @@ class npc_mimiron_flame_spread : public CreatureScript
                 DoCast(me, SPELL_FLAME, true);
             }
 
-            void SpellHit(Unit * /*caster*/, const SpellEntry* spell)
+            void SpellHit(Unit* /*caster*/, SpellEntry const* spell)
             {
                 switch (spell->Id)
                 {
@@ -1919,6 +1922,27 @@ class npc_frost_bomb : public CreatureScript
         CreatureAI* GetAI(Creature* creature) const
         {
             return new npc_frost_bombAI(creature);
+        }
+};
+
+class achievement_firefighter : public AchievementCriteriaScript
+{
+    public:
+        achievement_firefighter() : AchievementCriteriaScript("achievement_firefighter")
+        {
+        }
+
+        bool OnCheck(Player* player, Unit* /*target*/)
+        {
+            if (!player)
+                return false;
+
+            if (InstanceScript* instance = player->GetInstanceScript())
+                if (Creature* mimiron = ObjectAccessor::GetCreature(*player, instance->GetData64(TYPE_MIMIRON)))
+                    if (mimiron->AI()->GetData(DATA_GET_HARD_MODE))
+                        return true;
+
+            return false;
         }
 };
 
@@ -1996,4 +2020,5 @@ void AddSC_boss_mimiron()
     new npc_mimiron_flame_trigger();
     new npc_mimiron_flame_spread();
     new npc_frost_bomb();
+    new achievement_firefighter();
 }
