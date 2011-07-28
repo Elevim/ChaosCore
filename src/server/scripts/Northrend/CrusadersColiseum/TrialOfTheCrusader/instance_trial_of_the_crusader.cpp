@@ -212,6 +212,8 @@ class instance_trial_of_the_crusader : public InstanceMapScript
                             CrusadersCacheGUID = go->GetGUID();
                         break;
                     case GO_ARGENT_COLISEUM_FLOOR:
+                        // Set the floor faction depending on the raid faction. Avoids destroying the platafform by siege damage
+                        go->SetUInt32Value(GAMEOBJECT_FACTION, instance->GetPlayers().getFirst()->getSource()->GetTeam() == ALLIANCE ? GO_ALLIANCE_FACTION : GO_HORDE_FACTION);
                         FloorGUID = go->GetGUID();
                         break;
                     case GO_MAIN_GATE_DOOR:
@@ -367,6 +369,10 @@ class instance_trial_of_the_crusader : public InstanceMapScript
                                 SetData(TYPE_BEASTS, FAIL);
                                 break;
                         }
+                        break;
+                    case DATA_HEALTH_TWIN_SHARED:
+                        DataDamageTwin = data;
+                        data = NOT_STARTED;
                         break;
 
                     //Achievements
@@ -580,6 +586,8 @@ class instance_trial_of_the_crusader : public InstanceMapScript
                                 break;
                         };
                         return EventNPCId;
+                    case DATA_HEALTH_TWIN_SHARED:
+                        return DataDamageTwin;
                     default:
                         break;
                 }

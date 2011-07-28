@@ -24,7 +24,6 @@ EndScriptData */
 
 // Known bugs:
 // Gormok - Not implemented as a vehicle
-//        - Snobold Firebomb
 //        - Snobolled (creature at back)
 // Snakes - miss the 1-hitkill from emerging
 //        - visual changes between mobile and stationary models seems not to work sometimes
@@ -66,6 +65,7 @@ enum Summons
 {
     NPC_SNOBOLD_VASSAL   = 34800,
     NPC_SLIME_POOL       = 35176,
+	NPC_FIRE_BOMB		 = 34854,
 };
 
 enum BossSpells
@@ -77,19 +77,20 @@ enum BossSpells
     //Snobold
     SPELL_SNOBOLLED         = 66406,
     SPELL_BATTER            = 66408,
-    SPELL_FIRE_BOMB         = 66313,
-    SPELL_FIRE_BOMB_1       = 66317,
-    SPELL_FIRE_BOMB_DOT     = 66318,
+	SPELL_FIRE_BOMB_MISSILE	= 66313, // Wich triggers the animation and the initial damage on landing, also summons the firebomb trigger
+	SPELL_FIRE_BOMB_AURA    = 66318, // casted by the firebomb trigger :)
     SPELL_HEAD_CRACK        = 66407,
 
     //Acidmaw & Dreadscale
     SPELL_ACID_SPIT         = 66880,
+	SPELL_PARALYTIC_TOXIN   = 66823,
     SPELL_PARALYTIC_SPRAY   = 66901,
     SPELL_ACID_SPEW         = 66819,
     SPELL_PARALYTIC_BITE    = 66824,
     SPELL_SWEEP_0           = 66794,
     SUMMON_SLIME_POOL       = 66883,
     SPELL_FIRE_SPIT         = 66796,
+	SPELL_BURNING_BILE      = 66869,
     SPELL_MOLTEN_SPEW       = 66821,
     SPELL_BURNING_BITE      = 66879,
     SPELL_BURNING_SPRAY     = 66902,
@@ -225,6 +226,42 @@ public:
 
 };
 
+class mob_fire_bomb : public CreatureScript
+{
+public:
+	mob_fire_bomb() : CreatureScript("mob_fire_bomb") { }
+
+	CreatureAI* GetAI(Creature* creature) const
+	{
+		return new mob_fire_bombAI(creature);
+	}
+
+	struct mob_fire_bombAI : public ScriptedAI
+	{
+		mob_fire_bombAI(Creature* creature) : ScriptedAI(creature)
+		{
+		}
+		
+		bool casted;
+        void Reset()
+        {
+            casted = false;
+            me->SetReactState(REACT_PASSIVE);
+
+        }
+
+        void UpdateAI(const uint32 /*uiDiff*/)
+        {
+            if (!casted)
+            {
+                casted = true;
+                DoCast(me, SPELL_FIRE_BOMB_AURA);
+            }
+        }
+    };
+
+};
+
 class mob_snobold_vassal : public CreatureScript
 {
 public:
@@ -331,7 +368,9 @@ public:
             if (m_uiFireBombTimer < uiDiff)
             {
                 if (Unit* target = SelectTarget(SELECT_TARGET_RANDOM, 0))
-                    DoCast(target, SPELL_FIRE_BOMB);
+				{
+					DoCast(target, SPELL_FIRE_BOMB_MISSILE);
+				}
                 m_uiFireBombTimer = 20000;
             }
             else m_uiFireBombTimer -= uiDiff;
@@ -450,6 +489,11 @@ struct boss_jormungarAI : public ScriptedAI
                 if (biteTimer <= uiDiff)
                 {
                     DoCastVictim(biteSpell);
+					Unit* victim = me->getVictim();
+					if (victim && biteSpell == SPELL_BURNING_BITE && victim->HasAura(SPELL_PARALYTIC_TOXIN))
+						victim->RemoveAura(SPELL_PARALYTIC_TOXIN);
+					if (victim && biteSpell == SPELL_PARALYTIC_BITE && victim->HasAura(SPELL_BURNING_BILE))
+						victim->RemoveAura(SPELL_BURNING_BILE);
                     biteTimer = urand(15*IN_MILLISECONDS, 30*IN_MILLISECONDS);
                 } else biteTimer -= uiDiff;
 
@@ -501,8 +545,12 @@ struct boss_jormungarAI : public ScriptedAI
             case 4: // Stationary
                 if (sprayTimer <= uiDiff)
                 {
-                    if (Unit* target = SelectTarget(SELECT_TARGET_RANDOM, 0))
-                        DoCast(target, spraySpell);
+					Unit* target = SelectTarget(SELECT_TARGET_RANDOM, 0);
+					DoCast(target, spraySpell);
+					if (target && spraySpell == SPELL_BURNING_SPRAY && target->HasAura(SPELL_PARALYTIC_TOXIN))
+						target->RemoveAura(SPELL_PARALYTIC_TOXIN);
+					if (target && spraySpell == SPELL_PARALYTIC_SPRAY && target->HasAura(SPELL_BURNING_BILE))
+						target->RemoveAura(SPELL_BURNING_BILE);
                     sprayTimer = urand(15*IN_MILLISECONDS, 30*IN_MILLISECONDS);
                 } else sprayTimer -= uiDiff;
 
@@ -829,7 +877,7 @@ public:
                     if (Unit* target = SelectTarget(SELECT_TARGET_RANDOM, 0, 0, true))
                     {
                         m_uiTrampleTargetGUID = target->GetGUID();
-                        me->SetUInt64Value(UNIT_FIELD_TARGET, m_uiTrampleTargetGUID);
+                        me->SetTarget(m_uiTrampleTargetGUID);
                         DoScriptText(SAY_TRAMPLE_STARE, me, target);
                         m_bTrampleCasted = false;
                         SetCombatMovement(false);
@@ -860,7 +908,7 @@ public:
                 case 4:
                     DoScriptText(SAY_TRAMPLE_START, me);
                     me->GetMotionMaster()->MoveCharge(m_fTrampleTargetX, m_fTrampleTargetY, m_fTrampleTargetZ+2, 42, 1);
-                    me->SetUInt64Value(UNIT_FIELD_TARGET, 0);
+                    me->SetTarget(0);
                     m_uiStage = 5;
                     break;
                 case 5:
@@ -909,6 +957,7 @@ void AddSC_boss_northrend_beasts()
 {
     new boss_gormok();
     new mob_snobold_vassal();
+	new mob_fire_bomb();
     new boss_acidmaw();
     new boss_dreadscale();
     new mob_slime_pool();

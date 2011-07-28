@@ -217,6 +217,7 @@ enum Actions
     ACTION_YOGGSARON_KILLED = 7,
     ACTION_DEATH_RAY_MOVE = 8,
     ACTION_USED_MINDCONTROL = 9,
+    ACTION_MODIFY_SANITY = 10,
 };
 
 enum Spells
@@ -323,7 +324,7 @@ enum Spells
 
     //  Immortal Guardian - under 1% no damage
     SPELL_DRAIN_LIFE_10                         = 64159,
-    SPELL_DRAIN_LIFE_25                         = 33988,
+    SPELL_DRAIN_LIFE_25                         = 64160,
 
     SPELL_WEAKENED                              = 64162, // Dummy on low health for Titan Storm and Shadow Beacon
     SPELL_EMPOWERED                             = 65294, // stacks 9 times ... on 100% hp it have 9 stacks .. but with <10% it havent any
@@ -531,6 +532,11 @@ const EventSpeech EventNpcSpeaching[19] =
     {ENTRY_YOGG_SARON,SAY_YOGGSARON_5_VISION_3,5000,false},
 };
 
+bool IsPlayerInBrainRoom(const Player* pPlayer)
+{
+    return pPlayer->GetPositionZ() < 300;
+}
+
 class boss_sara : public CreatureScript
 {
 public:
@@ -581,6 +587,7 @@ public:
         uint32 uiPsychosis_Timer;
         uint32 uiMindSpell_Timer;
         uint32 uiTentacle_Timer;
+        uint32 uiTentacle1_Timer;
 
         uint32 uiEnrage_Timer;
         uint32 uiMadness_Timer;
@@ -651,7 +658,8 @@ public:
             // Spawn Yoggy if not spawned
             Creature* yogg = me->GetCreature(*me,guidYogg);
             if(yogg) yogg->DespawnOrUnsummon();
-            DoSummon(ENTRY_YOGG_SARON,SaraLocation,0,TEMPSUMMON_MANUAL_DESPAWN);
+            if(yogg = DoSummon(ENTRY_YOGG_SARON,SaraLocation,0,TEMPSUMMON_MANUAL_DESPAWN))
+                yogg->SetLootMode(LOOT_MODE_DEFAULT);
 
             Creature* yoggbrain = me->GetCreature(*me,guidYoggBrain);
             if(yoggbrain) yoggbrain->DespawnOrUnsummon();
@@ -701,6 +709,7 @@ public:
             uiPsychosis_Timer = urand(5000,5000);
             uiMindSpell_Timer = urand(30000,30000);
             uiTentacle_Timer = urand(3000,5000);
+            uiTentacle1_Timer = 1000;
             uiMadness_Timer = 60000;
 
             uiDeafeningRoar_Timer = urand(30000,60000);
@@ -883,13 +892,22 @@ public:
             if(m_Phase == newPhase)
                 return;
 
-            //Sayings
             switch(newPhase)
             {
             case PHASE_SARA:
+                DoScriptText(SAY_SARA_AGGRO_1,me);
                 DoSpawnKeeperForSupport();
                 SetSanityAura();
                 uiAmountKeeperActive = CountKeepersActive();
+                if(Creature* yogg = me->GetCreature(*me,guidYogg))
+                {
+                    yogg->SetLootMode(LOOT_MODE_DEFAULT);
+                    if(uiAmountKeeperActive <= 1)
+                        yogg->AddLootMode(LOOT_MODE_HARD_MODE_1);
+                    if(uiAmountKeeperActive == 0)
+                        yogg->AddLootMode(LOOT_MODE_HARD_MODE_2);
+                }
+
                 break;
             case PHASE_BRAIN:
                 me->SetHealth(me->GetMaxHealth());
@@ -962,7 +980,7 @@ public:
             switch(m_Phase)
             {
             case PHASE_NONE: DoScriptText(RAND(SAY_SARA_PREFIGHT_1,SAY_SARA_PREFIGHT_2),me); break;
-            case PHASE_SARA: DoScriptText(RAND(SAY_SARA_AGGRO_1,SAY_SARA_AGGRO_2,SAY_SARA_AGGRO_3),me); break;
+            case PHASE_SARA: DoScriptText(RAND(SAY_SARA_AGGRO_2,SAY_SARA_AGGRO_3),me); break;
             case PHASE_BRAIN: DoScriptText(RAND(SAY_SARA_PHASE2_1,SAY_SARA_PHASE2_2,SAY_SARA_AGGRO_3),me); break;
             }
         }
@@ -1100,11 +1118,6 @@ public:
         Creature* GetRandomGuardianTarget(float range = 100.0f)
         {
             return GetRandomEntryTarget(ENTRY_IMMORTAL_GUARDIAN);
-        }
-
-        bool IsPlayerInBrainRoom(Player* pPlayer)
-        {
-            return pPlayer->GetPositionZ() < 300;
         }
 
         bool AllSpawnsDeadOrDespawned(std::list<uint64> GuidListe)
@@ -1425,7 +1438,6 @@ public:
                                     yogg->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
                                     DoScriptText(SAY_PHASE2_5,yogg);
 
-                                    yogg->CastSpell(yogg,SPELL_SUMMON_CRUSHER_TENTACLE,true);
                                     yogg->CastSpell(yogg,SPELL_SUMMON_CURRUPTOR_TENTACLE,true);
                                 }
                                 me->setFaction(14);
@@ -1480,7 +1492,7 @@ public:
 
                             if(uiTentacle_Timer <= diff)
                             {
-                                if(urand(0,2) == 0)
+                                if(urand(0,1) == 0)
                                 {
                                     if(Player* target = SelectPlayerTargetInRange(500.0f))
                                         if(!IsPlayerInBrainRoom(target))
@@ -1488,15 +1500,19 @@ public:
                                 }else
                                 {
                                     if(Creature* yogg = me->GetCreature(*me,guidYogg))
-                                    {
-                                        if(!GetRandomEntryTarget(SPELL_SUMMON_CRUSHER_TENTACLE) || !urand(0,3))
-                                            yogg->CastSpell(yogg,SPELL_SUMMON_CRUSHER_TENTACLE,true);
-                                        else
-                                            yogg->CastSpell(yogg,SPELL_SUMMON_CURRUPTOR_TENTACLE,true);
-                                    }
+                                        yogg->CastSpell(yogg,SPELL_SUMMON_CURRUPTOR_TENTACLE,true);
                                 }
                                 uiTentacle_Timer =  uiBrainEvents_Count < 4 ? urand(5000,10000) : urand(2000,5000);
                             }else uiTentacle_Timer -= diff;
+
+                            if(uiTentacle1_Timer <= diff)
+                            {
+                                if(Creature* yogg = me->GetCreature(*me,guidYogg))
+                                    yogg->CastSpell(yogg,SPELL_SUMMON_CRUSHER_TENTACLE,true);
+                                uiTentacle1_Timer = uiBrainEvents_Count < 4 ? urand(30000,40000) : urand(10000,15000);
+                            }else uiTentacle1_Timer -= diff;
+
+
                         }else
                         {
                             if(Creature* yoggbrain = me->GetCreature(*me,guidYoggBrain))
@@ -1604,7 +1620,7 @@ public:
                         {
                             if(Creature* yogg = me->GetCreature(*me,guidYogg))
                             {
-                                if(yogg->IsNonMeleeSpellCasted(false))
+                                if(!yogg->IsNonMeleeSpellCasted(false))
                                 {
                                     DoScriptText(SAY_DEAFENING_ROAR,yogg,0);
                                     yogg->CastSpell(yogg,SPELL_DEAFENING_ROAR,false);
@@ -1617,14 +1633,10 @@ public:
                     {
                         if(Creature* yogg = me->GetCreature(*me,guidYogg))
                         {
-                            if(yogg->IsNonMeleeSpellCasted(false))
+                            if(!yogg->IsNonMeleeSpellCasted(false))
                             {
-                                if(Creature* guard = GetRandomGuardianTarget())
-                                {
-                                    if(guard->HasAura(SPELL_WEAKENED))
-                                            yogg->CastSpell(guard,SPELL_SHADOW_BEACON,false);
-                                }
-                                uiShadowBeacon_Timer = 10000;
+                                yogg->CastSpell(yogg,SPELL_SHADOW_BEACON,false);
+                                uiShadowBeacon_Timer = 30000;
                             }
                         }
                     }else uiShadowBeacon_Timer -= diff;
@@ -1646,6 +1658,10 @@ public:
             }
 
             if(m_Phase != PHASE_NONE && !IsEncounterInProgress())
+                EnterEvadeMode();
+
+            // temporary
+            if (m_Phase == PHASE_NONE && me->isInCombat())
                 EnterEvadeMode();
         }
     };
@@ -1705,11 +1721,12 @@ public:
         void Reset()
         {
             DoCast(me,SPELL_OMINOUS_CLOUD_EFFECT,true);
+            me->RemoveAurasDueToSpell(SPELL_SUMMON_GUARDIAN);
             me->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
             me->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
             //me->SetReactState(REACT_PASSIVE); //Prevent MoveInLineOfSight
 
-            me->GetMotionMaster()->MoveRandom(50.0f);
+            me->GetMotionMaster()->MoveRandom(25.0f);
         }
 
         void UpdateAI(const uint32 diff) {}
@@ -1885,7 +1902,7 @@ public:
         {
             DoZoneInCombat();
 
-            uiTentacleSpell_Timer = urand(10000,15000);
+            uiTentacleSpell_Timer = urand(5000,10000);
             switch(t_Type)
             {
             case CRUSHER_TENTACLE:
@@ -1975,6 +1992,7 @@ public:
         {
             if(pPlayer)
             {
+                pPlayer->RemoveAurasDueToSpell(SPELL_BRAIN_LINK);
                 pCreature->AddAura(SPELL_ILLUSION_ROOM,pPlayer);
                 pPlayer->NearTeleportTo(posTeleportPosition.m_positionX,posTeleportPosition.m_positionY,posTeleportPosition.m_positionZ,posTeleportPosition.m_orientation,true);
                 //pPlayer->CastSpell(pPlayer,SPELL_TELEPORT,true);
@@ -2048,17 +2066,11 @@ public:
             me->SetFlying(true);
         }
 
-        bool IsPlayerInBrainRoom(Player* pPlayer)
-        {
-            return pPlayer->GetPositionZ() < 300;
-        }
-
         void DamageTaken(Unit* dealer, uint32 &damage)
         {
             if(damage > me->GetHealth())
                 damage = me->GetHealth()-1;
         }
-
 
         void SpellHitTarget(Unit *target, const SpellEntry *spell)
         {
@@ -2205,6 +2217,12 @@ public:
                                         // Do Not Cast because its AoE and need better targeting scripting
                                         //DoCast(plr,SPELL_INSANE,true);
                                         //DoCast(plr,SPELL_INSANE_2,true);
+                                        if(IsPlayerInBrainRoom(plr))
+                                        {
+                                            plr->RemoveAurasDueToSpell(SPELL_ILLUSION_ROOM);
+                                            plr->NearTeleportTo(SaraLocation.GetPositionX(),SaraLocation.GetPositionY(),SaraLocation.GetPositionZ(),M_PI,false);
+                                        }
+
                                         me->AddAura(SPELL_INSANE,plr);
                                         me->AddAura(SPELL_INSANE_2,plr);
                                         DoScriptText(RAND(WHISP_INSANITY_1,WHISP_INSANITY_2),me,plr);
@@ -2301,7 +2319,7 @@ public:
             if(Unit* target = SelectPlayerTargetInRange(100.0f))
                 me->AI()->AttackStart(target);
 
-            uint32 uiDrainLife_Timer = 10000;
+            uiDrainLife_Timer = 10000;
         }
 
         void JustDied(Unit* /*killer*/)
@@ -2323,11 +2341,8 @@ public:
             if(dealer->GetGUID() == me->GetGUID())
                 return;
 
-            if(HealthBelowPct(1))
-                damage = 0;
-
             if(me->GetHealth() < damage)
-                damage = 0;
+                damage = me->GetHealth()-1;
         }
 
         void UpdateAI(const uint32 diff)
@@ -2924,7 +2939,7 @@ class spell_brain_link_periodic_dummy : public SpellScriptLoader
                                 
                                 trigger->CastSpell(player, SPELL_BRAIN_LINK_DUMMY, true);
                                 if(Unit* caster = GetCaster())
-                                if (!player->IsWithinDist(trigger, float(aurEff->GetMiscValue())))
+                                if (!player->IsWithinDist(trigger, float(aurEff->GetAmount())))
                                 {
                                     caster->CastSpell(trigger, SPELL_BRAIN_LINK_DAMAGE, true);
                                     if(InstanceScript* pInstance = caster->GetInstanceScript())
@@ -3027,9 +3042,8 @@ class spell_summon_tentacle_position : public SpellScriptLoader
             void ChangeSummonPos(SpellEffIndex /*effIndex*/)
             {
                 WorldLocation summonPos = *GetTargetDest();
-                Position offset = {0.0f, 0.0f, 20.0f, 0.0f};
-                summonPos.RelocateOffset(offset);
-                SetTargetDest(summonPos);
+                if(Unit* caster = GetCaster())
+                    summonPos.m_positionZ = caster->GetMap()->GetHeight(summonPos.GetPositionX(),summonPos.GetPositionY(),summonPos.GetPositionZ(),true,50.0f);
             }
 
             void Register()
@@ -3368,13 +3382,14 @@ VALUES
 (64172,'spell_titanic_storm_targeting');
 
 -- Condition because NPCs need this else no hit
-DELETE FROM conditions WHERE SourceEntry = 64172;
+DELETE FROM conditions WHERE SourceEntry in (64172,64465);
 INSERT INTO conditions
 (SourceTypeOrReferenceId,SourceGroup,SourceEntry,ElseGroup,
  ConditionTypeOrReference,ConditionValue1,ConditionValue2,ConditionValue3,
  ErrorTextId,ScriptName,COMMENT)
 VALUES
-(13,0,64172,0,18,1,33988,0,0,'','Effekt only for Immortal Guardians');
+(13,0,64172,0,18,1,33988,0,0,'','Effekt only for Immortal Guardians'),
+(13,0,64465,0,18,1,33988,0,0,'','Effekt only for Immortal Guardians');
 
 -- Hodir Secound Aura Script
 DELETE FROM spell_script_names WHERE spell_id IN (64174);

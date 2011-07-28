@@ -471,7 +471,7 @@ void LFGMgr::Join(Player* plr, uint8 roles, const LfgDungeonSet& selectedDungeon
     }
 
     // Check player or group member restrictions
-    if (plr->InBattleground() || plr->InArena() || plr->InBattlegroundQueue())
+    if (plr->InBattleground() || plr->InArena() || plr->InBattlegroundQueue() || plr->InOutdoorPVP())
         joinData.result = LFG_JOIN_USING_BG_SYSTEM;
     else if (plr->HasAura(LFG_SPELL_DUNGEON_DESERTER))
         joinData.result = LFG_JOIN_DESERTER;
@@ -494,7 +494,7 @@ void LFGMgr::Join(Player* plr, uint8 roles, const LfgDungeonSet& selectedDungeon
                         joinData.result = LFG_JOIN_PARTY_DESERTER;
                     else if (plrg->HasAura(LFG_SPELL_DUNGEON_COOLDOWN))
                         joinData.result = LFG_JOIN_PARTY_RANDOM_COOLDOWN;
-                    else if (plrg->InBattleground() || plrg->InArena() || plrg->InBattlegroundQueue())
+                    else if (plrg->InBattleground() || plrg->InArena() || plrg->InBattlegroundQueue() || plr->InOutdoorPVP())
                         joinData.result = LFG_JOIN_USING_BG_SYSTEM;
                     ++memberCount;
                     players.insert(plrg);
@@ -1774,9 +1774,9 @@ void LFGMgr::RewardDungeonDoneFor(const uint32 dungeonId, Player* player)
     ClearState(guid);
     SetState(guid, LFG_STATE_FINISHED_DUNGEON);
 
-    // Give rewards only if its a random dungeon
+    // Give rewards only if its a random dungeon or world event
     LFGDungeonEntry const* dungeon = sLFGDungeonStore.LookupEntry(rDungeonId);
-    if (!dungeon || dungeon->type != LFG_TYPE_RANDOM)
+    if (!dungeon || (dungeon->type != LFG_TYPE_RANDOM && dungeon->grouptype != 11))
     {
         sLog->outDebug(LOG_FILTER_LFG, "LFGMgr::RewardDungeonDoneFor: [" UI64FMTD "] dungeon %u is not random", guid, rDungeonId);
         return;
